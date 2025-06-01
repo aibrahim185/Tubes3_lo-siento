@@ -1,0 +1,44 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+.python-version
+
+# UV package manager
+uv.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Application specific
+*.log
+logs/
+config.ini
+secrets.json
+
+# Test files and temporary data
+test_cvs/
+extracted_text/
+tmp/
+temp/
+*.tmp
+*.backup
+
+# Coverage and testing
+.pytest_cache/
+.coverage
+htmlcov/
