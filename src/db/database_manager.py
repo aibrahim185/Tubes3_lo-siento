@@ -1,16 +1,22 @@
 import mysql.connector
 from mysql.connector import Error
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class DatabaseManager:
-    def __init__(self, host='localhost', database='ats_cv_analyzer', user='root', password=''):
-        """Initialize database connection"""
-        self.host = host
-        self.database = database
-        self.user = user
-        self.password = password
+    def __init__(self, host=None, database=None, user=None, password=None, port=None):
+        """Initialize database connection with environment variables"""
+        self.host = host or os.getenv('DB_HOST', 'localhost')
+        self.database = database or os.getenv('DB_NAME', 'ats_cv_analyzer')
+        self.user = user or os.getenv('DB_USER', 'root')
+        self.password = password or os.getenv('DB_PASSWORD', '')
+        self.port = int(port or os.getenv('DB_PORT', 3306))
         self.connection = None
         
     def connect(self):
@@ -18,6 +24,7 @@ class DatabaseManager:
         try:
             self.connection = mysql.connector.connect(
                 host=self.host,
+                port=self.port,
                 database=self.database,
                 user=self.user,
                 password=self.password
