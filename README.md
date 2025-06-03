@@ -88,28 +88,28 @@ This application uses the following dependencies:
 ```
 Tubes3_lo-siento/
 ├── src/
-│   ├── main.py              # Application entry point with PyQt6 GUI
-│   ├── algorithms/          # Algorithm implementations
+│   ├── main.py                 # Application entry point with PyQt6 GUI
+│   ├── algorithms/             # Algorithm implementations
 │   │   ├── __init__.py
-│   │   ├── kmp.py          # Knuth-Morris-Pratt algorithm
-│   │   ├── boyer_moore.py  # Boyer-Moore algorithm
-│   │   ├── levenshtein.py  # Levenshtein Distance algorithm
-│   │   └── regex_search.py # Regex-based search and extraction
-│   └── utils/              # Utility modules
+│   │   ├── kmp.py              # Knuth-Morris-Pratt algorithm
+│   │   ├── boyer_moore.py      # Boyer-Moore algorithm
+│   │   ├── levenshtein.py      # Levenshtein Distance algorithm
+│   │   └── regex_search.py     # Regex-based search and extraction
+│   └── utils/                  # Utility modules
 │       ├── __init__.py
-│       └── pdf_processor.py # PDF text extraction utilities
-├── data/                   # Data storage directory
-├── doc/                    # Documentation
-├── logs/                   # Application logs
-├── docker-compose.yml      # Docker services configuration
-├── docker-entrypoint.sh    # Docker startup script
-├── Dockerfile             # Docker container configuration
-├── init.sql               # Database initialization script
-├── pyproject.toml         # Project dependencies (uv)
-├── requirements.txt       # Legacy requirements file
-├── uv.lock               # Dependency lock file
-├── .env.example          # Environment variables template
-└── README.md             # Project documentation
+│       └── pdf_processor.py    # PDF text extraction utilities
+├── data/                       # Data storage directory
+├── doc/                        # Documentation
+├── logs/                       # Application logs
+├── docker-compose.yml          # Docker services configuration
+├── docker-entrypoint.sh        # Docker startup script
+├── Dockerfile                  # Docker container configuration
+├── init.sql                    # Database initialization script
+├── pyproject.toml              # Project dependencies (uv)
+├── requirements.txt            # Legacy requirements file
+├── uv.lock                     # Dependency lock file
+├── .env.example                # Environment variables template
+└── README.md                   # Project documentation
 ```
 
 ## Authors
