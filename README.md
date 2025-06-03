@@ -1,85 +1,119 @@
-# Tubes3_LO-SIENTO - ATS CV Analyzer
+# ATS CV Analyzer
 
-This project is an Applicant Tracking System (ATS) designed to parse CVs, search for keywords using pattern matching algorithms, and manage applicant data. It utilizes pattern matching techniques (KMP and Boyer-Moore) to efficiently find relevant information in digital CVs. The system also uses Levenshtein Distance for fuzzy matching and Regex for information extraction.
+An Applicant Tracking System (ATS) application for CV parsing and keyword searching using pattern matching algorithms (KMP & Boyer-Moore) and Regex.
 
-## Brief Algorithm Explanation
+## Algorithms Used
 
-- **Knuth-Morris-Pratt (KMP)**: The KMP algorithm is an efficient string searching algorithm that preprocesses the pattern to create a Longest Proper Prefix (LPS) array. This array helps in skipping characters intelligently when a mismatch occurs, avoiding redundant comparisons and achieving linear time complexity in the length of the text.
-- **Boyer-Moore (BM)**: The Boyer-Moore algorithm is another efficient string searching algorithm. It uses two heuristics: the "bad character" rule and the "good suffix" rule. It starts matching the pattern from the end of the pattern against the text. In case of a mismatch, it can make larger shifts than KMP in many cases, often leading to better average-case performance, especially with larger alphabets.
+- **KMP (Knuth-Morris-Pratt)**: String searching with LPS array preprocessing
+- **Boyer-Moore**: String searching with "bad character" and "good suffix" heuristics
+- **Levenshtein Distance**: Algorithm for calculating similarity between two strings (fuzzy matching)
+- **Regex**: Structured information extraction from CVs and flexible pattern matching
 
-## Requirements
+## Quick Start
 
-- **Python** (e.g., Python 3.9+)
-- **`uv` Package Manager**: For environment and package management.
-  - If not installed, follow instructions at [https://astral.sh/uv](https://astral.sh/uv) or:
-    - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-    - Windows (PowerShell): `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
-- **MySQL Server**: For database storage.
-- **Project Dependencies** (will be installed via `uv` from `requirements.txt`):
-  - PyQt6
-  - PyPDF2 (or other PDF library used)
-  - mysql-connector-python
+### 1. Setup Database (Docker)
 
-## Installation and Setup
+```powershell
+docker-compose up -d
+```
 
-1.  **Clone the Repository**:
+### 2. Run Application
 
-    ```bash
-    git clone https://github.com/aibrahim15/Tubes3_lo-siento.git
-    cd Tubes3_lo-siento
-    ```
+```powershell
+uv run src/main.py
+```
 
-2.  **Create and Activate Virtual Environment using `uv`**:
+### 3. Access phpMyAdmin
 
-    ```bash
-    uv venv
-    ```
+- URL: http://localhost:8081
 
-    Activate it:
+## Setup Development
 
-    - macOS/Linux: `source .venv/bin/activate`
-    - Windows (PowerShell): `.venv\Scripts\Activate.ps1`
-    - Windows (CMD): `.venv\Scripts\activate.bat`
+### Install uv
 
-3.  **Install Dependencies using `uv`**:
-    Create a `requirements.txt` file in the root of your project with the following content:
+```bash
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-    ```txt
-    mysql-connector-python==9.3.0
-    PyMuPDF==1.24.2
-    pyqt6==6.9.0
-    pyqt6-qt6==6.9.0
-    pyqt6-sip==13.10.2
-    ```
+# Linux/macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-    Then run:
+### Prerequisites
 
-    ```bash
-    uv pip install -r requirements.txt
-    ```
+- Python 3.12+
+- Docker & Docker Compose
+- [uv package manager](https://astral.sh/uv)
 
-4.  **Database Setup**:
-    - Ensure your MySQL server is running.
-    - Create a database for this application.
-    - Update the database connection details in the application if necessary (e.g., in `src/db/database_manager.py`).
-    - The application may require initial data seeding. Follow instructions provided by the application or run the seeding script if available (e.g., for initial `ApplicantProfile` and `ApplicationDetail` table creation and linking to CVs in the `data/` folder).
+### Installation
 
-## How to Run the Program
+````powershell
+git clone https://github.com/aibrahim15/Tubes3_lo-siento.git
+cd Tubes3_lo-siento
 
-1.  Ensure your virtual environment is activated.
-2.  Navigate to the `src/` directory:
-    ```bash
-    cd src
-    ```
-3.  Run the main application file:
-    ```bash
-    uv run main.py
-    ```
+### Install Dependencies
 
-## Author(s)
+```powershell
+# Install dependencies using uv
+uv sync
+
+# Create .env file (copy from .env.example)
+Copy-Item .env.example .env
+# Edit .env file according to your database configuration
+````
+
+## Dependencies
+
+This application uses the following dependencies:
+
+- **PyQt6** - GUI framework for user interface
+- **PyMuPDF** - Library for PDF processing and text extraction
+- **mysql-connector-python** - Database connectivity with MySQL
+- **python-dotenv** - Environment variables management from .env file
+
+## Features
+
+- Upload and parse PDF CVs using PyMuPDF
+- Exact match keyword searching with KMP and Boyer-Moore algorithms
+- Fuzzy matching using Levenshtein Distance algorithm
+- Automatic information extraction from CVs with Regex (email, phone, education, skills)
+- Database management with MySQL for storing CV data and search results
+- User-friendly GUI application with PyQt6
+- Web interface for database management (phpMyAdmin)
+- Environment configuration using .env file
+- Docker containerization for easy deployment
+
+## Project Structure
+
+```
+Tubes3_lo-siento/
+├── src/
+│   ├── main.py              # Application entry point with PyQt6 GUI
+│   ├── algorithms/          # Algorithm implementations
+│   │   ├── __init__.py
+│   │   ├── kmp.py          # Knuth-Morris-Pratt algorithm
+│   │   ├── boyer_moore.py  # Boyer-Moore algorithm
+│   │   ├── levenshtein.py  # Levenshtein Distance algorithm
+│   │   └── regex_search.py # Regex-based search and extraction
+│   └── utils/              # Utility modules
+│       ├── __init__.py
+│       └── pdf_processor.py # PDF text extraction utilities
+├── data/                   # Data storage directory
+├── doc/                    # Documentation
+├── logs/                   # Application logs
+├── docker-compose.yml      # Docker services configuration
+├── docker-entrypoint.sh    # Docker startup script
+├── Dockerfile             # Docker container configuration
+├── init.sql               # Database initialization script
+├── pyproject.toml         # Project dependencies (uv)
+├── requirements.txt       # Legacy requirements file
+├── uv.lock               # Dependency lock file
+├── .env.example          # Environment variables template
+└── README.md             # Project documentation
+```
+
+## Authors
 
 - Raudhah Yahya Kuddah - 13122003
 - Felix Chandra - 13523012
 - Ahmad Ibrahim - 13523089
-
----
