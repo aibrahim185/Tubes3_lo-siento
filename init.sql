@@ -1,9 +1,5 @@
--- Initialize ATS CV Analyzer Database
--- This file will be executed when the MySQL container starts for the first time
-
 USE ats_cv_analyzer;
 
--- Create CVs table
 CREATE TABLE IF NOT EXISTS cvs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     filename VARCHAR(255) NOT NULL,
@@ -17,7 +13,6 @@ CREATE TABLE IF NOT EXISTS cvs (
     INDEX idx_upload_date (upload_date)
 );
 
--- Create search_results table
 CREATE TABLE IF NOT EXISTS search_results (
     id INT AUTO_INCREMENT PRIMARY KEY,
     cv_id INT,
@@ -30,12 +25,3 @@ CREATE TABLE IF NOT EXISTS search_results (
     INDEX idx_algorithm (algorithm_used),
     INDEX idx_search_date (search_date)
 );
-
--- Insert sample data (optional)
--- INSERT INTO cvs (filename, file_path, extracted_text, status) VALUES
--- ('sample_cv.pdf', '/app/data/sample_cv.pdf', 'Sample CV content...', 'processed');
-
--- Create user for application (if needed)
--- CREATE USER IF NOT EXISTS 'ats_user'@'%' IDENTIFIED BY 'ats_password';
--- GRANT ALL PRIVILEGES ON ats_cv_analyzer.* TO 'ats_user'@'%';
--- FLUSH PRIVILEGES;
