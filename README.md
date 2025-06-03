@@ -1,12 +1,13 @@
 # ATS CV Analyzer
 
-Aplikasi Applicant Tracking System (ATS) untuk parsing CV dan pencarian kata kunci menggunakan algoritma pattern matching (KMP & Boyer-Moore) dan Regex.
+An Applicant Tracking System (ATS) application for CV parsing and keyword searching using pattern matching algorithms (KMP & Boyer-Moore) and Regex.
 
-## Algoritma yang Digunakan
+## Algorithms Used
 
-- **KMP (Knuth-Morris-Pratt)**: Pencarian string dengan preprocessing LPS array untuk kompleksitas linear
-- **Boyer-Moore**: Pencarian string dengan heuristik "bad character" dan "good suffix" untuk performa optimal
-- **Regex**: Ekstraksi informasi terstruktur dari CV dan pattern matching fleksibel
+- **KMP (Knuth-Morris-Pratt)**: String searching with LPS array preprocessing
+- **Boyer-Moore**: String searching with "bad character" and "good suffix" heuristics
+- **Levenshtein Distance**: Algorithm for calculating similarity between two strings (fuzzy matching)
+- **Regex**: Structured information extraction from CVs and flexible pattern matching
 
 ## Quick Start
 
@@ -28,7 +29,7 @@ uv run src/main.py
 
 ## Setup Development
 
-### Install uv (jika belum ada)
+### Install uv
 
 ```bash
 # Windows
@@ -42,62 +43,73 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 - Python 3.12+
 - Docker & Docker Compose
-- [uv package manager](https://astral.sh/uv) - untuk dependency management
+- [uv package manager](https://astral.sh/uv)
 
 ### Installation
 
-```powershell
+````powershell
 git clone https://github.com/aibrahim15/Tubes3_lo-siento.git
 cd Tubes3_lo-siento
 
-# Install dependencies dengan uv
+### Install Dependencies
+
+```powershell
+# Install dependencies using uv
 uv sync
 
 # Create .env file (copy from .env.example)
 Copy-Item .env.example .env
-# Update database configuration if needed
-```
+# Edit .env file according to your database configuration
+````
 
 ## Dependencies
 
-Aplikasi ini menggunakan dependencies berikut:
+This application uses the following dependencies:
 
-- **PyQt6** - GUI framework
-- **PyMuPDF** - PDF processing dan text extraction
-- **mysql-connector-python** - Database connectivity dengan MySQL
-- **python-dotenv** - Environment variables management
+- **PyQt6** - GUI framework for user interface
+- **PyMuPDF** - Library for PDF processing and text extraction
+- **mysql-connector-python** - Database connectivity with MySQL
+- **python-dotenv** - Environment variables management from .env file
 
 ## Features
 
-- Upload dan parsing PDF CV (PyMuPDF)
-- Pencarian kata kunci dengan algoritma KMP dan Boyer-Moore
-- Ekstraksi informasi dengan Regex
-- Database management dengan MySQL
-- GUI application dengan PyQt6
-- Web interface untuk database (phpMyAdmin)
-- Environment configuration dengan .env file
+- Upload and parse PDF CVs using PyMuPDF
+- Exact match keyword searching with KMP and Boyer-Moore algorithms
+- Fuzzy matching using Levenshtein Distance algorithm
+- Automatic information extraction from CVs with Regex (email, phone, education, skills)
+- Database management with MySQL for storing CV data and search results
+- User-friendly GUI application with PyQt6
+- Web interface for database management (phpMyAdmin)
+- Environment configuration using .env file
+- Docker containerization for easy deployment
 
 ## Project Structure
 
 ```
 Tubes3_lo-siento/
 ├── src/
-│   ├── main.py              # Entry point aplikasi
-│   ├── algorithms/          # Implementasi algoritma
+│   ├── main.py              # Application entry point with PyQt6 GUI
+│   ├── algorithms/          # Algorithm implementations
+│   │   ├── __init__.py
 │   │   ├── kmp.py          # Knuth-Morris-Pratt algorithm
 │   │   ├── boyer_moore.py  # Boyer-Moore algorithm
-│   │   └── regex_search.py # Regex-based search
-│   ├── db/                 # Database management
-│   │   └── database_manager.py
-│   ├── gui/                # GUI PyQt6
-│   │   └── main_window.py
-│   └── utils/              # Utilities
-│       └── pdf_processor.py
+│   │   ├── levenshtein.py  # Levenshtein Distance algorithm
+│   │   └── regex_search.py # Regex-based search and extraction
+│   └── utils/              # Utility modules
+│       ├── __init__.py
+│       └── pdf_processor.py # PDF text extraction utilities
+├── data/                   # Data storage directory
+├── doc/                    # Documentation
+├── logs/                   # Application logs
 ├── docker-compose.yml      # Docker services configuration
-├── pyproject.toml          # Project dependencies (uv)
-├── requirements.txt        # Legacy requirements file
-├── .env.example           # Environment variables template
-└── init.sql               # Database initialization script
+├── docker-entrypoint.sh    # Docker startup script
+├── Dockerfile             # Docker container configuration
+├── init.sql               # Database initialization script
+├── pyproject.toml         # Project dependencies (uv)
+├── requirements.txt       # Legacy requirements file
+├── uv.lock               # Dependency lock file
+├── .env.example          # Environment variables template
+└── README.md             # Project documentation
 ```
 
 ## Authors
