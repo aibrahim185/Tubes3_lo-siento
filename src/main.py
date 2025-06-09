@@ -8,12 +8,13 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QMessageBox, QTextEdit, QScrollArea,
     QLineEdit, QRadioButton, QSpinBox, QDialog, QFrame, QFileDialog
 )
-from PyQt6.QtCore import Qt, QSize, QUrl
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 
 from utils.pdf_processor import PDFProcessor
 from algorithms.boyer_moore import boyer_moore_search
 from algorithms.kmp import kmp_search
+from algorithms.aho_corasick import aho_corasick_search
 from algorithms.levenshtein import levenshtein_distance, find_most_similar
 from algorithms.regex_search import (
     extract_email_addresses, extract_phone_numbers,
@@ -33,8 +34,8 @@ class SummaryDialog(QDialog):
         if applicant_data.get('date_of_birth') == 'N/A' or applicant_data.get('address') == 'N/A':
             if applicant_data.get('address') == 'Database Entry':
                 info_db = (f"File: {applicant_data['first_name']}.pdf\n"
-                          f"Sumber: Database CV\n"
-                          f"Upload Date: {applicant_data.get('date_of_birth', 'N/A')}")
+                           f"Sumber: Database CV\n"
+                           f"Upload Date: {applicant_data.get('date_of_birth', 'N/A')}")
             else:
                 info_db = f"File: {applicant_data['first_name']}.pdf\nSumber: File yang diupload"
             layout.addWidget(QLabel("<b>Informasi File</b>"))
@@ -182,10 +183,12 @@ class MainWindow(QMainWindow):
         
         # algoritma
         algo_layout = QVBoxLayout()
-        algo_layout.addWidget(QLabel("<b>Algoritma Exact Match:</b>"))
+        algo_layout.addWidget(QLabel("<b>Algoritma Pencocokan String:</b>"))
+        self.ac_radio = QRadioButton("Aho-Corasick") # New radio button
         self.kmp_radio = QRadioButton("KMP")
         self.bm_radio = QRadioButton("Boyer-Moore")
-        self.kmp_radio.setChecked(True)
+        self.ac_radio.setChecked(True) # Set Aho-Corasick as default
+        algo_layout.addWidget(self.ac_radio)
         algo_layout.addWidget(self.kmp_radio)
         algo_layout.addWidget(self.bm_radio)
         
@@ -459,8 +462,15 @@ class MainWindow(QMainWindow):
             return
 
         keywords = [kw.strip() for kw in keywords_raw.split(',') if kw.strip()]
+        keyword_map = {kw.lower(): kw for kw in keywords}
+        
         top_n = self.top_matches_input.value()
-        search_algo = kmp_search if self.kmp_radio.isChecked() else boyer_moore_search
+        
+        is_ac_selected = self.ac_radio.isChecked()
+        is_kmp_selected = self.kmp_radio.isChecked()
+        search_algo = None
+        if not is_ac_selected:
+            search_algo = kmp_search if is_kmp_selected else boyer_moore_search
         
         all_cv_sources = self.get_all_cv_sources()
         if not all_cv_sources:
@@ -484,12 +494,22 @@ class MainWindow(QMainWindow):
                 continue
             
             matched_kw_freq = {}
-            for kw in keywords:
-                matches = search_algo(cv_text, kw)
-                if matches:
-                    matched_kw_freq[kw] = len(matches)
-                    if kw.lower() in unmatched_keywords:
-                        unmatched_keywords.remove(kw.lower())
+            if is_ac_selected:
+                matches = aho_corasick_search(cv_text, keywords)
+                for match in matches:
+                    lw_pattern = match['pattern']
+                    original_pattern = keyword_map.get(lw_pattern)
+                    if original_pattern:
+                        matched_kw_freq[original_pattern] = matched_kw_freq.get(original_pattern, 0) + 1
+            else:
+                for kw in keywords:
+                    matches = search_algo(cv_text, kw)
+                    if matches:
+                        matched_kw_freq[kw] = len(matches)
+
+            if matched_kw_freq:
+                found_patterns = {p.lower() for p in matched_kw_freq.keys()}
+                unmatched_keywords -= found_patterns
 
             if matched_kw_freq:
                 total_matches = sum(matched_kw_freq.values())
@@ -500,20 +520,23 @@ class MainWindow(QMainWindow):
                 })
                 
                 if cv_source["source"] == "database" and applicant.get("detail_id"):
-                    algorithm_name = "KMP" if self.kmp_radio.isChecked() else "Boyer-Moore"
+                    if is_ac_selected:
+                        algorithm_name = "Aho-Corasick"
+                    else:
+                        algorithm_name = "KMP" if is_kmp_selected else "Boyer-Moore"
+                    
                     search_query = ", ".join(keywords)
                     self.save_search_results(applicant["detail_id"], search_query, algorithm_name, total_matches)
         
         duration_exact = time.time() - start_time_exact
 
-        # ---- FUZZY MATCHING ----
+        # ---- FUZZY MATCHING  ----
         start_time_fuzzy = 0
         duration_fuzzy = 0
         if unmatched_keywords:
             start_time_fuzzy = time.time()
-            
             print(f"Melakukan fuzzy matching untuk: {unmatched_keywords}")
-            
+            # NOTE: Fuzzy matching logic is not implemented yet.
             duration_fuzzy = time.time() - start_time_fuzzy
 
         sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
