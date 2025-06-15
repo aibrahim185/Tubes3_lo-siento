@@ -7,9 +7,9 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QMessageBox, QTextEdit, QScrollArea,
     QLineEdit, QRadioButton, QSpinBox, QDialog, QFrame, QFileDialog,
-    QGroupBox, QCheckBox
+    QGroupBox, QCheckBox, QProgressBar
 )
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, QThread, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 
 from utils.pdf_processor import PDFProcessor
@@ -25,6 +25,159 @@ from PyQt6.QtCore import pyqtSignal
 from utils.flow_layout import FlowLayout
 
 load_dotenv()
+
+class SearchWorker(QThread):
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(list, float, float, int)
+    error = pyqtSignal(str)
+    
+    def __init__(self, keywords, all_cv_sources, top_n, is_ac_selected, is_kmp_selected, use_fuzzy, keyword_map):
+        super().__init__()
+        self.keywords = keywords
+        self.all_cv_sources = all_cv_sources
+        self.top_n = top_n
+        self.is_ac_selected = is_ac_selected
+        self.is_kmp_selected = is_kmp_selected
+        self.use_fuzzy = use_fuzzy
+        self.keyword_map = keyword_map
+        self._is_cancelled = False
+    
+    def cancel(self):
+        """Method untuk membatalkan pencarian"""
+        self._is_cancelled = True
+    
+    def run(self):
+        """Method utama yang dijalankan di thread terpisah"""
+        try:
+            self.progress.emit(0, "Memulai pencarian...")
+            
+            search_algo = None
+            if not self.is_ac_selected:
+                search_algo = kmp_search if self.is_kmp_selected else boyer_moore_search
+            
+            # ---- EXACT MATCHING ----
+            self.progress.emit(10, "Melakukan exact matching...")
+            start_time_exact = time.time()
+            results = []
+            unmatched_keywords = set(kw.lower() for kw in self.keywords)
+            
+            total_cvs = len(self.all_cv_sources)
+            processed_cvs = 0
+            
+            for cv_source in self.all_cv_sources:
+                if self._is_cancelled:
+                    return
+                
+                applicant = cv_source["applicant"]
+                cv_path = cv_source["cv_path"]
+                
+                # Update progress
+                processed_cvs += 1
+                progress_percent = int(20 + (processed_cvs / total_cvs) * 40)  # 20-60% untuk exact matching
+                self.progress.emit(progress_percent, f"Memproses CV {processed_cvs}/{total_cvs}: {applicant['first_name']}")
+                
+                if not cv_path or not os.path.exists(cv_path):
+                    continue
+                
+                cv_text = PDFProcessor.extract_text_dual_format(cv_path)['processed']
+                if not cv_text:
+                    continue
+                
+                matched_kw_freq = {}
+                if self.is_ac_selected:
+                    matches = aho_corasick_search(cv_text, self.keywords)
+                    for match in matches:
+                        lw_pattern = match['pattern']
+                        original_pattern = self.keyword_map.get(lw_pattern)
+                        if original_pattern:
+                            matched_kw_freq[original_pattern] = matched_kw_freq.get(original_pattern, 0) + 1
+                else:
+                    for kw in self.keywords:
+                        matches = search_algo(cv_text, kw)
+                        if matches:
+                            matched_kw_freq[kw] = len(matches)
+
+                if matched_kw_freq:
+                    found_patterns = {p.lower() for p in matched_kw_freq.keys()}
+                    unmatched_keywords -= found_patterns
+
+                if matched_kw_freq:
+                    total_matches = sum(matched_kw_freq.values())
+                    results.append({
+                        "applicant": applicant,
+                        "matches": matched_kw_freq,
+                        "score": total_matches
+                    })
+            
+            duration_exact = time.time() - start_time_exact
+            
+            # ---- FUZZY MATCHING ----
+            duration_fuzzy = 0
+            if self.use_fuzzy and unmatched_keywords and not self._is_cancelled:
+                self.progress.emit(60, f"Melakukan fuzzy matching untuk {len(unmatched_keywords)} keyword...")
+                start_time_fuzzy = time.time()
+                
+                processed_fuzzy = 0
+                for cv_source in self.all_cv_sources:
+                    if self._is_cancelled:
+                        return
+                    
+                    applicant = cv_source["applicant"]
+                    cv_path = cv_source["cv_path"]
+                    
+                    processed_fuzzy += 1
+                    progress_percent = int(60 + (processed_fuzzy / total_cvs) * 30)  # 60-90% untuk fuzzy matching
+                    self.progress.emit(progress_percent, f"Fuzzy matching {processed_fuzzy}/{total_cvs}: {applicant['first_name']}")
+
+                    if not cv_path or not os.path.exists(cv_path):
+                        continue
+
+                    cv_text = PDFProcessor.extract_text_dual_format(cv_path)['processed']
+                    if not cv_text:
+                        continue
+                    
+                    fuzzy_matches_for_cv = {}
+                    for keyword in unmatched_keywords:
+                        threshold = calculate_dynamic_threshold(keyword)
+                        if threshold == 0:
+                            continue
+
+                        similar_words = find_most_similar(keyword, cv_text, threshold=threshold)
+                        if similar_words:
+                            fuzzy_key = f"{keyword} (fuzzy)"
+                            fuzzy_matches_for_cv[fuzzy_key] = len(similar_words)
+                    
+                    if fuzzy_matches_for_cv:
+                        applicant_id = applicant["applicant_id"]
+                        
+                        existing_result = next((r for r in results if r["applicant"]["applicant_id"] == applicant_id), None)
+
+                        if existing_result:
+                            existing_result["matches"].update(fuzzy_matches_for_cv)
+                            existing_result["score"] += sum(fuzzy_matches_for_cv.values())
+                        else:
+                            results.append({
+                                "applicant": applicant,
+                                "matches": fuzzy_matches_for_cv,
+                                "score": sum(fuzzy_matches_for_cv.values())
+                            })
+                
+                duration_fuzzy = time.time() - start_time_fuzzy
+            
+            if self._is_cancelled:
+                return
+            
+            self.progress.emit(90, "Mengurutkan hasil...")
+            sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
+            top_results = sorted_results[:self.top_n]
+            
+            self.progress.emit(100, "Pencarian selesai!")
+            
+            # Emit hasil akhir
+            self.finished.emit(top_results, duration_exact, duration_fuzzy, len(self.all_cv_sources))
+            
+        except Exception as e:
+            self.error.emit(f"Error during search: {str(e)}")
 
 class KeywordTag(QFrame):
     removed = pyqtSignal(str)
@@ -177,6 +330,7 @@ class MainWindow(QMainWindow):
         self.main_layout = QVBoxLayout(self.central_widget)
         
         self.current_keywords = []
+        self.search_worker = None
         
         # input
         input_groupbox = QGroupBox("Kata Kunci")
@@ -258,9 +412,27 @@ class MainWindow(QMainWindow):
         options_layout.addLayout(top_matches_layout)
 
         # search
+        search_layout = QHBoxLayout()
         self.search_button = QPushButton("🔍 Search")
         self.search_button.setMinimumHeight(40)
         self.search_button.clicked.connect(self.execute_search)
+        
+        self.cancel_button = QPushButton("❌ Cancel")
+        self.cancel_button.setMinimumHeight(40)
+        self.cancel_button.clicked.connect(self.cancel_search)
+        self.cancel_button.setEnabled(False)
+        
+        search_layout.addWidget(self.search_button)
+        search_layout.addWidget(self.cancel_button)
+        
+        # Progress bar
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setMinimum(0)
+        self.progress_bar.setMaximum(100)
+        
+        self.progress_label = QLabel("")
+        self.progress_label.setVisible(False)
 
         # hasil
         self.summary_label = QLabel("Hasil Pencarian Akan Ditampilkan di Sini")
@@ -276,7 +448,9 @@ class MainWindow(QMainWindow):
         self.main_layout.addLayout(pdf_layout)
         self.main_layout.addWidget(self.uploaded_files_display)
         self.main_layout.addLayout(options_layout)
-        self.main_layout.addWidget(self.search_button)
+        self.main_layout.addLayout(search_layout)
+        self.main_layout.addWidget(self.progress_bar)
+        self.main_layout.addWidget(self.progress_label)
         self.main_layout.addWidget(self.create_separator())
         self.main_layout.addWidget(self.summary_label)
         self.main_layout.addWidget(scroll)
@@ -418,7 +592,6 @@ class MainWindow(QMainWindow):
                     self.uploaded_pdf_files.append(file_path)
                     
                     try:
-                        # Simpan ke database
                         detail_id = self.save_uploaded_cv_to_db(file_path)
                         if detail_id:
                             successfully_added += 1
@@ -517,6 +690,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Input Kosong", "Silakan masukkan setidaknya satu kata kunci.")
             return
 
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.cancel()
+            self.search_worker.wait()
+
         keywords = self.current_keywords
         keyword_map = {kw.lower(): kw for kw in keywords}
         
@@ -524,127 +701,82 @@ class MainWindow(QMainWindow):
         
         is_ac_selected = self.ac_radio.isChecked()
         is_kmp_selected = self.kmp_radio.isChecked()
-        search_algo = None
-        if not is_ac_selected:
-            search_algo = kmp_search if is_kmp_selected else boyer_moore_search
+        use_fuzzy = self.fuzzy_match_checkbox.isChecked()
         
         all_cv_sources = self.get_all_cv_sources()
         if not all_cv_sources:
             QMessageBox.information(self, "Info", "Tidak ada CV yang tersedia untuk dicari (baik dari database maupun file yang diupload).")
             return
 
-        # ---- EXACT MATCHING ----
-        start_time_exact = time.time()
-        results = []
-        unmatched_keywords = set(kw.lower() for kw in keywords)
-
-        for cv_source in all_cv_sources:
-            applicant = cv_source["applicant"]
-            cv_path = cv_source["cv_path"]
-            
-            if not cv_path or not os.path.exists(cv_path):
-                continue
-            
-            cv_text = PDFProcessor.extract_text_dual_format(cv_path)['processed']
-            if not cv_text:
-                continue
-            
-            matched_kw_freq = {}
-            if is_ac_selected:
-                matches = aho_corasick_search(cv_text, keywords)
-                for match in matches:
-                    lw_pattern = match['pattern']
-                    original_pattern = keyword_map.get(lw_pattern)
-                    if original_pattern:
-                        matched_kw_freq[original_pattern] = matched_kw_freq.get(original_pattern, 0) + 1
-            else:
-                for kw in keywords:
-                    matches = search_algo(cv_text, kw)
-                    if matches:
-                        matched_kw_freq[kw] = len(matches)
-
-            if matched_kw_freq:
-                found_patterns = {p.lower() for p in matched_kw_freq.keys()}
-                unmatched_keywords -= found_patterns
-
-            if matched_kw_freq:
-                total_matches = sum(matched_kw_freq.values())
-                results.append({
-                    "applicant": applicant,
-                    "matches": matched_kw_freq,
-                    "score": total_matches
-                })
-                
-                if cv_source["source"] == "database" and applicant.get("detail_id"):
-                    if is_ac_selected:
-                        algorithm_name = "Aho-Corasick"
-                    else:
-                        algorithm_name = "KMP" if is_kmp_selected else "Boyer-Moore"
-                    
-                    search_query = ", ".join(keywords)
-                    self.save_search_results(applicant["detail_id"], search_query, algorithm_name, total_matches)
+        self.search_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        self.progress_label.setVisible(True)
+        self.progress_label.setText("Mempersiapkan pencarian...")
         
-        duration_exact = time.time() - start_time_exact
+        for i in reversed(range(self.results_layout.count())):
+            self.results_layout.itemAt(i).widget().setParent(None)
+        
+        self.summary_label.setText("Pencarian sedang berjalan...")
 
-        # ---- FUZZY MATCHING  ----
-        start_time_fuzzy = 0
-        duration_fuzzy = 0
-        if self.fuzzy_match_checkbox.isChecked() and unmatched_keywords:
-            start_time_fuzzy = time.time()
-            print(f"Melakukan fuzzy matching untuk: {unmatched_keywords}")
-            
-            fuzzy_results_found = False
-
-            for cv_source in all_cv_sources:
-                applicant = cv_source["applicant"]
-                cv_path = cv_source["cv_path"]
-
-                if not cv_path or not os.path.exists(cv_path):
-                    continue
-
-                cv_text = PDFProcessor.extract_text_dual_format(cv_path)['processed']
-                if not cv_text:
-                    continue
-                
-                fuzzy_matches_for_cv = {}
-                for keyword in unmatched_keywords:
-                    threshold = calculate_dynamic_threshold(keyword)
-
-                    if threshold == 0:
-                        continue
-
-                    similar_words = find_most_similar(keyword, cv_text, threshold=threshold)
-                    if similar_words:
-                        fuzzy_key = f"{keyword} (fuzzy)"
-                        fuzzy_matches_for_cv[fuzzy_key] = len(similar_words)
-                
-                if fuzzy_matches_for_cv:
-                    fuzzy_results_found = True
-                    applicant_id = applicant["applicant_id"]
-                    
-                    # Cek apakah pelamar ini sudah ada di hasil (dari exact match)
-                    existing_result = next((r for r in results if r["applicant"]["applicant_id"] == applicant_id), None)
-
-                    if existing_result:
-                        # Jika sudah ada, tambahkan fuzzy matches ke hasilnya
-                        existing_result["matches"].update(fuzzy_matches_for_cv)
-                        existing_result["score"] += sum(fuzzy_matches_for_cv.values())
-                    else:
-                        # Jika belum ada, buat entri hasil baru
-                        results.append({
-                            "applicant": applicant,
-                            "matches": fuzzy_matches_for_cv,
-                            "score": sum(fuzzy_matches_for_cv.values())
-                        })
-            
-            if fuzzy_results_found:
-                duration_fuzzy = time.time() - start_time_fuzzy
-
-        # Urutkan kembali
-        sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
-        top_results = sorted_results[:top_n]
-
-        self.display_results(top_results, duration_exact, duration_fuzzy, len(all_cv_sources))
+        self.search_worker = SearchWorker(
+            keywords, all_cv_sources, top_n, is_ac_selected, 
+            is_kmp_selected, use_fuzzy, keyword_map
+        )
+        
+        self.search_worker.progress.connect(self.on_search_progress)
+        self.search_worker.finished.connect(self.on_search_finished)
+        self.search_worker.error.connect(self.on_search_error)
+        
+        self.search_worker.start()
+    
+    def cancel_search(self):
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.cancel()
+            self.progress_label.setText("Membatalkan pencarian...")
+            self.search_worker.wait()
+            self.on_search_cancelled()
+    
+    def on_search_progress(self, percentage, message):
+        """Callback untuk update progress"""
+        self.progress_bar.setValue(percentage)
+        self.progress_label.setText(message)
+    
+    def on_search_finished(self, top_results, duration_exact, duration_fuzzy, total_scanned):
+        self.search_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        
+        self.display_results(top_results, duration_exact, duration_fuzzy, total_scanned)
+        
+        for result in top_results:
+            applicant = result["applicant"]
+            if applicant.get("detail_id") and str(applicant["detail_id"]).isdigit():
+                algorithm_name = "Aho-Corasick" if self.ac_radio.isChecked() else ("KMP" if self.kmp_radio.isChecked() else "Boyer-Moore")
+                search_query = ", ".join(self.current_keywords)
+                self.save_search_results(applicant["detail_id"], search_query, algorithm_name, result["score"])
+    
+    def on_search_error(self, error_message):
+        self.search_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        
+        QMessageBox.critical(self, "Error Pencarian", f"Terjadi kesalahan saat pencarian:\n{error_message}")
+        self.summary_label.setText("Pencarian gagal.")
+    
+    def on_search_cancelled(self):
+        self.search_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setVisible(False)
+        self.progress_label.setVisible(False)
+        
+        self.summary_label.setText("Pencarian dibatalkan.")
+        
+        for i in reversed(range(self.results_layout.count())):
+            self.results_layout.itemAt(i).widget().setParent(None)
         
     def display_results(self, top_results, duration_exact, duration_fuzzy, total_scanned):
         for i in reversed(range(self.results_layout.count())):
@@ -670,6 +802,12 @@ class MainWindow(QMainWindow):
             for res in top_results:
                 card = CVCard(res['applicant'], res['matches'])
                 self.results_layout.addWidget(card)
+
+    def closeEvent(self, event):
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.cancel()
+            self.search_worker.wait()
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
