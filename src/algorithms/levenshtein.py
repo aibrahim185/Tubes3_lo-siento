@@ -37,3 +37,15 @@ def find_most_similar(keyword: str, text: str, threshold: int = 2) -> list[str]:
             similar_words.append(cleaned_word)
             
     return list(set(similar_words))
+
+def calculate_dynamic_threshold(keyword: str) -> int:
+
+    length = len(keyword)
+    if length <= 3:
+        return 0  # Kata pendek tidak boleh ada typo
+    elif length <= 5:
+        return 1  # Untuk kata dengan panjang 4-5 karakter hanya boleh 1 typo
+    elif length <= 9:
+        return 2  # Untuk kata dengan panjang 6-9 karakter hanya boleh 2 typo
+    else:
+        return 3  # Untuk kata dengan panjang >9 karakter boleh 3 typo

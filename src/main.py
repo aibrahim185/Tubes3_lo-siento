@@ -6,7 +6,8 @@ import mysql.connector
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QMessageBox, QTextEdit, QScrollArea,
-    QLineEdit, QRadioButton, QSpinBox, QDialog, QFrame, QFileDialog
+    QLineEdit, QRadioButton, QSpinBox, QDialog, QFrame, QFileDialog,
+    QGroupBox
 )
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
@@ -15,13 +16,39 @@ from utils.pdf_processor import PDFProcessor
 from algorithms.boyer_moore import boyer_moore_search
 from algorithms.kmp import kmp_search
 from algorithms.aho_corasick import aho_corasick_search
-from algorithms.levenshtein import levenshtein_distance, find_most_similar
+from algorithms.levenshtein import find_most_similar , calculate_dynamic_threshold
 from algorithms.regex_search import (
     extract_email_addresses, extract_phone_numbers,
     extract_education_info, extract_skills_keywords
 )
+from PyQt6.QtCore import pyqtSignal
+from utils.flow_layout import FlowLayout
 
 load_dotenv()
+
+class KeywordTag(QFrame):
+    removed = pyqtSignal(str)
+
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        self.keyword_text = text
+        self.setObjectName("KeywordTag")
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 2, 2, 2)
+        layout.setSpacing(5)
+
+        label = QLabel(text)
+        delete_button = QPushButton("x")
+        delete_button.setObjectName("DeleteButton")
+        delete_button.setFixedSize(18, 18)
+        delete_button.clicked.connect(self.emit_removed_signal)
+
+        layout.addWidget(label)
+        layout.addWidget(delete_button)
+
+    def emit_removed_signal(self):
+        self.removed.emit(self.keyword_text)
 
 class SummaryDialog(QDialog):
     def __init__(self, applicant_data, cv_text, parent=None):
@@ -149,11 +176,33 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
         
+        self.current_keywords = []
+        
         # input
-        input_layout = QVBoxLayout()
-        input_layout.addWidget(QLabel("<b>Masukkan Kata Kunci (pisahkan dengan koma):</b>"))
-        self.keywords_input = QLineEdit("python, react, sql")
-        input_layout.addWidget(self.keywords_input)
+        input_groupbox = QGroupBox("Kata Kunci")
+        input_groupbox_layout = QVBoxLayout(input_groupbox)
+        add_keyword_layout = QHBoxLayout()
+        self.keywords_input = QLineEdit()
+        self.keywords_input.setPlaceholderText("Ketik keyword lalu tekan tombol + atau Enter")
+        self.keywords_input.setFixedHeight(30)
+        self.add_keyword_button = QPushButton("+")
+        self.add_keyword_button.setFixedSize(35, 35)
+
+        add_keyword_layout.addWidget(self.keywords_input)
+        add_keyword_layout.addWidget(self.add_keyword_button)
+
+        # Layout untuk menampung tag
+        self.tags_layout = FlowLayout(spacing=5)
+        tags_container = QWidget()
+        tags_container.setLayout(self.tags_layout)
+        tags_container.setMinimumHeight(40)
+
+        input_groupbox_layout.addLayout(add_keyword_layout)
+        input_groupbox_layout.addWidget(tags_container)
+
+        # Hubungkan sinyal
+        self.add_keyword_button.clicked.connect(self.add_keyword)
+        self.keywords_input.returnPressed.connect(self.add_keyword)
         
         # upload PDF
         pdf_layout = QHBoxLayout()
@@ -174,10 +223,6 @@ class MainWindow(QMainWindow):
         self.uploaded_files_display.setMaximumHeight(100)
         self.uploaded_files_display.setPlainText("Belum ada file yang diupload")
         
-        input_layout.addLayout(pdf_layout)
-        input_layout.addWidget(self.uploaded_files_label)
-        input_layout.addWidget(self.uploaded_files_display)
-        
         # opsi
         options_layout = QHBoxLayout()
         
@@ -196,6 +241,7 @@ class MainWindow(QMainWindow):
         top_matches_layout = QVBoxLayout()
         top_matches_layout.addWidget(QLabel("<b>Tampilkan Top Matches:</b>"))
         self.top_matches_input = QSpinBox()
+        self.top_matches_input.setMinimumHeight(30)
         self.top_matches_input.setMinimum(1)
         self.top_matches_input.setValue(10)
         top_matches_layout.addWidget(self.top_matches_input)
@@ -218,12 +264,39 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.results_area)
 
-        self.main_layout.addLayout(input_layout)
+        self.main_layout.addWidget(input_groupbox)
+        self.main_layout.addLayout(pdf_layout)
+        self.main_layout.addWidget(self.uploaded_files_display)
         self.main_layout.addLayout(options_layout)
         self.main_layout.addWidget(self.search_button)
         self.main_layout.addWidget(self.create_separator())
         self.main_layout.addWidget(self.summary_label)
         self.main_layout.addWidget(scroll)
+
+    def add_keyword(self):
+        keyword = self.keywords_input.text().strip()
+        if keyword and keyword.lower() not in [kw.lower() for kw in self.current_keywords]:
+            self.current_keywords.append(keyword)
+
+            tag_widget = KeywordTag(keyword)
+            tag_widget.removed.connect(self.remove_keyword) # Hubungkan sinyal remove
+            self.tags_layout.addWidget(tag_widget)
+
+            self.keywords_input.clear()
+
+    def remove_keyword(self, keyword_to_remove):
+        self.current_keywords = [kw for kw in self.current_keywords if kw.lower() != keyword_to_remove.lower()]
+        
+        for i in range(self.tags_layout.count() - 1, -1, -1):
+            widget = self.tags_layout.itemAt(i).widget()
+            
+            if isinstance(widget, KeywordTag) and widget.keyword_text.lower() == keyword_to_remove.lower():
+                layout_item = self.tags_layout.takeAt(i)
+                if layout_item and layout_item.widget():
+                    layout_item.widget().deleteLater()
+                break
+
+        self.tags_layout.update()
 
     def create_separator(self):
         separator = QFrame()
@@ -456,12 +529,11 @@ class MainWindow(QMainWindow):
         return all_cvs
 
     def execute_search(self):
-        keywords_raw = self.keywords_input.text()
-        if not keywords_raw:
-            QMessageBox.warning(self, "Input Kosong", "Silakan masukkan kata kunci.")
+        if not self.current_keywords:
+            QMessageBox.warning(self, "Input Kosong", "Silakan masukkan setidaknya satu kata kunci.")
             return
 
-        keywords = [kw.strip() for kw in keywords_raw.split(',') if kw.strip()]
+        keywords = self.current_keywords
         keyword_map = {kw.lower(): kw for kw in keywords}
         
         top_n = self.top_matches_input.value()
@@ -536,9 +608,55 @@ class MainWindow(QMainWindow):
         if unmatched_keywords:
             start_time_fuzzy = time.time()
             print(f"Melakukan fuzzy matching untuk: {unmatched_keywords}")
-            # NOTE: Fuzzy matching logic is not implemented yet.
-            duration_fuzzy = time.time() - start_time_fuzzy
+            
+            fuzzy_results_found = False
 
+            for cv_source in all_cv_sources:
+                applicant = cv_source["applicant"]
+                cv_path = cv_source["cv_path"]
+
+                if not cv_path or not os.path.exists(cv_path):
+                    continue
+
+                cv_text = PDFProcessor.extract_text_dual_format(cv_path)['processed']
+                if not cv_text:
+                    continue
+                
+                fuzzy_matches_for_cv = {}
+                for keyword in unmatched_keywords:
+                    threshold = calculate_dynamic_threshold(keyword)
+
+                    if threshold == 0:
+                        continue
+
+                    similar_words = find_most_similar(keyword, cv_text, threshold=threshold)
+                    if similar_words:
+                        fuzzy_key = f"{keyword} (fuzzy)"
+                        fuzzy_matches_for_cv[fuzzy_key] = len(similar_words)
+                
+                if fuzzy_matches_for_cv:
+                    fuzzy_results_found = True
+                    applicant_id = applicant["applicant_id"]
+                    
+                    # Cek apakah pelamar ini sudah ada di hasil (dari exact match)
+                    existing_result = next((r for r in results if r["applicant"]["applicant_id"] == applicant_id), None)
+
+                    if existing_result:
+                        # Jika sudah ada, tambahkan fuzzy matches ke hasilnya
+                        existing_result["matches"].update(fuzzy_matches_for_cv)
+                        existing_result["score"] += sum(fuzzy_matches_for_cv.values())
+                    else:
+                        # Jika belum ada, buat entri hasil baru
+                        results.append({
+                            "applicant": applicant,
+                            "matches": fuzzy_matches_for_cv,
+                            "score": sum(fuzzy_matches_for_cv.values())
+                        })
+            
+            if fuzzy_results_found:
+                duration_fuzzy = time.time() - start_time_fuzzy
+
+        # Urutkan kembali
         sorted_results = sorted(results, key=lambda x: x['score'], reverse=True)
         top_results = sorted_results[:top_n]
 
@@ -571,6 +689,35 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    stylesheet = """
+        QGroupBox {
+            font-weight: bold; 
+            color: #e8eaed;
+        }
+        #KeywordTag {
+            background-color: #141414;
+            color: #e8eaed;
+            border-radius: 14px; /* Pill shape */
+            padding: 5px 8px 5px 12px;
+        }
+        #KeywordTag QLabel {
+            color: #e8eaed;
+            padding-right: 5px;
+        }
+        #DeleteButton {
+            background-color: transparent;
+            color: #bdc1c6;
+            border-radius: 9px;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 0px 4px 2px 4px;
+        }
+        #DeleteButton:hover {
+            background-color: #f28b82; /* Soft red on hover */
+            color: #202124; /* Dark text for contrast */
+        }
+    """
+    app.setStyleSheet(stylesheet)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
