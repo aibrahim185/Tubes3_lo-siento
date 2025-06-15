@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QMessageBox, QTextEdit, QScrollArea,
     QLineEdit, QRadioButton, QSpinBox, QDialog, QFrame, QFileDialog,
-    QGroupBox
+    QGroupBox, QCheckBox
 )
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         input_groupbox_layout = QVBoxLayout(input_groupbox)
         add_keyword_layout = QHBoxLayout()
         self.keywords_input = QLineEdit()
-        self.keywords_input.setPlaceholderText("Ketik keyword lalu tekan tombol + atau Enter")
+        self.keywords_input.setPlaceholderText(" Ketik keyword lalu tekan tombol + atau Enter")
         self.keywords_input.setFixedHeight(30)
         self.add_keyword_button = QPushButton("+")
         self.add_keyword_button.setFixedSize(35, 35)
@@ -236,15 +236,24 @@ class MainWindow(QMainWindow):
         algo_layout.addWidget(self.ac_radio)
         algo_layout.addWidget(self.kmp_radio)
         algo_layout.addWidget(self.bm_radio)
-        
-        # Top Matches
+
+        # Pengaturan
         top_matches_layout = QVBoxLayout()
-        top_matches_layout.addWidget(QLabel("<b>Tampilkan Top Matches:</b>"))
+        top_matches_layout.addWidget(QLabel("<b>Pengaturan:</b>"))
+        input_line_layout = QHBoxLayout()
         self.top_matches_input = QSpinBox()
         self.top_matches_input.setMinimumHeight(30)
         self.top_matches_input.setMinimum(1)
         self.top_matches_input.setValue(10)
-        top_matches_layout.addWidget(self.top_matches_input)
+        self.top_matches_input.setFixedWidth(70) 
+        input_line_layout.addWidget(QLabel("Tampilkan Top"))
+        input_line_layout.addWidget(self.top_matches_input)
+        input_line_layout.addWidget(QLabel("Matches"))
+        top_matches_layout.addLayout(input_line_layout)
+        self.fuzzy_match_checkbox = QCheckBox("Gunakan Fuzzy Matching (Perbolehkan Typo)")
+        self.fuzzy_match_checkbox.setChecked(True)
+        self.fuzzy_match_checkbox.setStyleSheet("margin-top: 10px;")
+        top_matches_layout.addWidget(self.fuzzy_match_checkbox)
         
         options_layout.addLayout(algo_layout)
         options_layout.addLayout(top_matches_layout)
@@ -605,7 +614,7 @@ class MainWindow(QMainWindow):
         # ---- FUZZY MATCHING  ----
         start_time_fuzzy = 0
         duration_fuzzy = 0
-        if unmatched_keywords:
+        if self.fuzzy_match_checkbox.isChecked() and unmatched_keywords:
             start_time_fuzzy = time.time()
             print(f"Melakukan fuzzy matching untuk: {unmatched_keywords}")
             
