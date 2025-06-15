@@ -364,45 +364,62 @@ class MainWindow(QMainWindow):
             cursor.close()
 
     def save_uploaded_cv_to_db(self, file_path, extracted_text=None):
-        if not self.db_connection or not self.db_connection.is_connected():
-            self.connect_to_database()
-            if not self.db_connection:
-                return None
+            """
+            Saves uploaded CV information to the database.
+            It first tries to find an existing applicant based on the CV filename.
+            If found, it links the new CV to the existing applicant.
+            If not found, it creates a new applicant profile.
+            """
+            if not self.db_connection or not self.db_connection.is_connected():
+                self.init_db_connection()
 
-        cursor = self.db_connection.cursor()
-        filename = os.path.basename(file_path)
-        
-        try:
-            base_name = filename.replace(".pdf", "")
-            name_parts = base_name.split(" ", 1)
-            first_name = name_parts[0] if name_parts else "Unknown"
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
-            
-            profile_query = """
-                INSERT INTO ApplicantProfile (first_name, last_name)
-                VALUES (%s, %s)
-            """
-            cursor.execute(profile_query, (first_name, last_name))
-            applicant_id = cursor.lastrowid
-            
-            detail_query = """
-                INSERT INTO ApplicationDetail (applicant_id, application_role, cv_path, filename, extracted_text, status)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            
-            status = 'processed' if extracted_text else 'uploaded'
-            cursor.execute(detail_query, (applicant_id, "CV Upload", file_path, filename, extracted_text, status))
-            detail_id = cursor.lastrowid
-            
-            self.db_connection.commit()
-            return detail_id
-            
-        except mysql.connector.Error as err:
-            self.db_connection.rollback()
-            QMessageBox.warning(self, "Database Error", f"Gagal menyimpan CV ke database: {err}")
-            return None
-        finally:
-            cursor.close()
+            if not self.db_connection:
+                print("Database connection is not available.")
+                return
+
+            cursor = self.db_connection.cursor()
+            filename = os.path.basename(file_path)
+            applicant_id_to_use = None
+
+            try:
+                print(f"Searching for existing applicant for filename: {filename}")
+                search_query = "SELECT applicant_id FROM ApplicationDetail WHERE cv_path LIKE %s LIMIT 1"
+                cursor.execute(search_query, (f"%{filename}",))
+                result = cursor.fetchone()
+
+                if result:
+                    applicant_id_to_use = result[0]
+                    print(f"Found existing applicant_id: {applicant_id_to_use}")
+                else:
+                    print(f"No existing applicant found. Creating a new profile for: {filename}")
+                    base_name = filename.replace(".pdf", "")
+                    name_parts = base_name.split(" ", 1)
+                    first_name = name_parts[0] if name_parts else "Unknown"
+                    last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+                    profile_query = """
+                        INSERT INTO ApplicantProfile (first_name, last_name)
+                        VALUES (%s, %s)
+                    """
+                    cursor.execute(profile_query, (first_name, last_name))
+                    applicant_id_to_use = cursor.lastrowid
+                    print(f"Created new applicant_id: {applicant_id_to_use}")
+
+                detail_query = """
+                    INSERT INTO ApplicationDetail (applicant_id, cv_path, filename, extracted_text, status, upload_date)
+                    VALUES (%s, %s, %s, %s, 'uploaded', NOW())
+                """
+                cursor.execute(detail_query, (applicant_id_to_use, file_path, filename, extracted_text))
+                self.db_connection.commit()
+                print(f"Successfully saved application detail for applicant_id: {applicant_id_to_use}")
+
+            except mysql.connector.Error as err:
+                print(f"Database Error: {err}")
+                if self.db_connection.is_connected():
+                    self.db_connection.rollback()
+            finally:
+                if cursor:
+                    cursor.close()
 
     def save_search_results(self, detail_id, search_query, algorithm_used, matches_found):
         if not self.db_connection or not self.db_connection.is_connected():
