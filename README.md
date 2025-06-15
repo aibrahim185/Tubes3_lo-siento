@@ -104,7 +104,6 @@ Tubes3_lo-siento/
 ├── docker-compose.yml          # Docker services configuration
 ├── docker-entrypoint.sh        # Docker startup script
 ├── Dockerfile                  # Docker container configuration
-├── init.sql                    # Database initialization script
 ├── pyproject.toml              # Project dependencies (uv)
 ├── requirements.txt            # Legacy requirements file
 ├── uv.lock                     # Dependency lock file
