@@ -13,7 +13,7 @@ services:
       - "${DB_PORT}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./tubes3_seeding.sql:/docker-entrypoint-initdb.d/tubes3_seeding.sql:ro
     networks:
       - ats_network
     healthcheck:

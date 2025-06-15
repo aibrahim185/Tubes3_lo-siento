@@ -344,15 +344,10 @@ class MainWindow(QMainWindow):
                 ap.phone_number,
                 ad.detail_id,
                 ad.application_role,
-                ad.cv_path,
-                ad.filename,
-                ad.extracted_text,
-                ad.upload_date,
-                ad.status
+                ad.cv_path
             FROM ApplicantProfile ap
             JOIN ApplicationDetail ad ON ap.applicant_id = ad.applicant_id
-            WHERE ad.status = 'processed' OR ad.status = 'uploaded'
-            ORDER BY ad.upload_date DESC
+            ORDER BY ad.detail_id DESC
         """
         try:
             cursor.execute(query)
@@ -363,7 +358,7 @@ class MainWindow(QMainWindow):
         finally:
             cursor.close()
 
-    def save_uploaded_cv_to_db(self, file_path, extracted_text=None):
+    def save_uploaded_cv_to_db(self, file_path):
         if not self.db_connection or not self.db_connection.is_connected():
             self.connect_to_database()
             if not self.db_connection:
@@ -386,12 +381,11 @@ class MainWindow(QMainWindow):
             applicant_id = cursor.lastrowid
             
             detail_query = """
-                INSERT INTO ApplicationDetail (applicant_id, application_role, cv_path, filename, extracted_text, status)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO ApplicationDetail (applicant_id, application_role, cv_path)
+                VALUES (%s, %s, %s)
             """
             
-            status = 'processed' if extracted_text else 'uploaded'
-            cursor.execute(detail_query, (applicant_id, "CV Upload", file_path, filename, extracted_text, status))
+            cursor.execute(detail_query, (applicant_id, "CV Upload", file_path))
             detail_id = cursor.lastrowid
             
             self.db_connection.commit()
@@ -405,22 +399,8 @@ class MainWindow(QMainWindow):
             cursor.close()
 
     def save_search_results(self, detail_id, search_query, algorithm_used, matches_found):
-        if not self.db_connection or not self.db_connection.is_connected():
-            return
-
-        cursor = self.db_connection.cursor()
-        query = """
-            INSERT INTO search_results (detail_id, search_query, algorithm_used, matches_found)
-            VALUES (%s, %s, %s, %s)
-        """
-        
-        try:
-            cursor.execute(query, (detail_id, search_query, algorithm_used, matches_found))
-            self.db_connection.commit()
-        except mysql.connector.Error as err:
-            print(f"Error saving search results: {err}")
-        finally:
-            cursor.close()
+        # Log search results instead of saving to database since search_results table doesn't exist
+        print(f"Search performed - Detail ID: {detail_id}, Query: '{search_query}', Algorithm: {algorithm_used}, Matches: {matches_found}")
 
     def upload_pdf_files(self):
         file_dialog = QFileDialog()
@@ -438,17 +418,13 @@ class MainWindow(QMainWindow):
                     self.uploaded_pdf_files.append(file_path)
                     
                     try:
-                        extracted_data = PDFProcessor.extract_text_dual_format(file_path)
-                        extracted_text = extracted_data['normal'] if extracted_data else None
-                        
                         # Simpan ke database
-                        detail_id = self.save_uploaded_cv_to_db(file_path, extracted_text)
+                        detail_id = self.save_uploaded_cv_to_db(file_path)
                         if detail_id:
                             successfully_added += 1
                             print(f"✅ Berhasil menyimpan {os.path.basename(file_path)} ke database dengan Detail ID: {detail_id}")
                         else:
                             print(f"❌ Gagal menyimpan {os.path.basename(file_path)} ke database")
-                            
                     except Exception as e:
                         print(f"❌ Error processing {os.path.basename(file_path)}: {e}")
             
@@ -493,17 +469,17 @@ class MainWindow(QMainWindow):
         for cv_data in db_cvs:
             cv_path = cv_data.get("cv_path")
             if cv_path and os.path.exists(cv_path):
+                filename = os.path.basename(cv_path)
                 applicant_data = {
                     "applicant_id": cv_data["applicant_id"],
                     "detail_id": cv_data["detail_id"],
-                    "first_name": cv_data["first_name"] or cv_data["filename"].replace(".pdf", ""),
+                    "first_name": cv_data["first_name"] or filename.replace(".pdf", ""),
                     "last_name": cv_data["last_name"] or "",
-                    "date_of_birth": cv_data["date_of_birth"].strftime("%Y-%m-%d") if cv_data["date_of_birth"] else cv_data["upload_date"].strftime("%Y-%m-%d"),
+                    "date_of_birth": cv_data["date_of_birth"].strftime("%Y-%m-%d") if cv_data["date_of_birth"] else "N/A",
                     "address": cv_data["address"] or "Database Entry",
                     "phone_number": cv_data["phone_number"] or "N/A",
                     "application_role": cv_data["application_role"] or "CV dari Database",
-                    "cv_path": cv_path,
-                    "extracted_text": cv_data.get("extracted_text")
+                    "cv_path": cv_path
                 }
                 all_cvs.append({
                     "source": "database",
@@ -514,7 +490,7 @@ class MainWindow(QMainWindow):
         for i, file_path in enumerate(self.uploaded_pdf_files):
             if os.path.exists(file_path):
                 filename = os.path.basename(file_path)
-                already_in_db = any(cv_data["filename"] == filename for cv_data in db_cvs)
+                already_in_db = any(cv_data["cv_path"] == file_path for cv_data in db_cvs)
                 
                 if not already_in_db:
                     dummy_applicant = {
