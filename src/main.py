@@ -252,7 +252,6 @@ class MainWindow(QMainWindow):
         top_matches_layout.addLayout(input_line_layout)
         self.fuzzy_match_checkbox = QCheckBox("Gunakan Fuzzy Matching (Perbolehkan Typo)")
         self.fuzzy_match_checkbox.setChecked(True)
-        self.fuzzy_match_checkbox.setStyleSheet("margin-top: 10px;")
         top_matches_layout.addWidget(self.fuzzy_match_checkbox)
         
         options_layout.addLayout(algo_layout)
